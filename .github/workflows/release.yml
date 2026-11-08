@@ -49,11 +49,16 @@ jobs:
           }
           echo $bin | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
-      # 编译 gnumake
+      # 只跑 build_w32.bat；它即使 exit 也只影响本步骤
       - name: Build gnumake
         shell: cmd
         run: |
           .\build_w32.bat --without-guile gcc
+
+      # 独立步骤执行 strip，并打印前后大小和退出码
+      - name: Strip gnumake
+        shell: cmd
+        run: |
           echo ===== before strip =====
           dir GccRel\gnumake.exe
           strip -v -s GccRel\gnumake.exe
