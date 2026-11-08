@@ -1,0 +1,42 @@
+name: Build and Release GNU Make
+
+on:
+  push:
+    tags:
+      - 'v*'   # 推送 v 开头的标签时触发，比如 v4.4.1
+
+permissions:
+  contents: write   # 允许创建 Release 和上传资产
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 下载 w64devkit 并解压，然后把 bin 目录加入 PATH
+      - name: Setup w64devkit
+        shell: pwsh
+        run: |
+          $version = "2.6.0"
+          $url = "https://github.com/skeeto/w64devkit/releases/download/v$version/w64devkit-$version.zip"
+          Invoke-WebRequest -Uri $url -OutFile w64devkit.zip
+          Expand-Archive -Path w64devkit.zip -DestinationPath .
+          echo "${{ github.workspace }}\w64devkit\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      # 你的编译命令，现在 gcc 已在 PATH 中
+      - name: Build gnumake
+        shell: cmd
+        run: |
+          .\build_w32.bat --without-guile gcc
+          strip -s GccRel\gnumake.exe
+
+      # 发布到 Release
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        if: github.ref_type == 'tag'
+        with:
+          files: GccRel/gnumake.exe
+          generate_release_notes: true
