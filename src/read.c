@@ -1366,13 +1366,34 @@ eval (struct ebuffer *ebuf, int set_default)
 static void
 remove_comments (char *line)
 {
-  char *comment;
+  if (line)
+    {
+        char *comment = find_map_unquote (line, MAP_COMMENT|MAP_VARIABLE);
+        if (comment) 
+        {
+            //char b = 0;
+            *comment = '\0';  /* Cut off the line at the #.  */
 
-  comment = find_map_unquote (line, MAP_COMMENT|MAP_VARIABLE);
+            while (comment != line)
+            {
+                if (--comment == line)
+                    break;
 
-  if (comment != 0)
-    /* Cut off the line at the #.  */
-    *comment = '\0';
+                if (*comment == ' ' || *comment == '\t')  // Remove ' ' and '\t' before comment.
+                {
+//                     if (!b)
+//                     {
+//                         printf("remove_comments() |%s|\n", line);
+//                         b = 1;
+//                     }
+
+                    *comment = '\0';
+                }
+                else
+                    break;
+            }
+        }
+    }
 }
 
 /* Execute a 'undefine' directive.
