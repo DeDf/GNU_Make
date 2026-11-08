@@ -1,64 +1,60 @@
-name: Build GNU Make with w64devkit v2.6.0
+name: Build and Release GNU Make
+
 on:
   push:
     tags:
       - 'v*'
-  workflow_dispatch:
 
-env:
-  W64DEVKIT_TAG: v2.6.0
-  W64DEVKIT_ASSET: w64devkit-x64-2.6.0.exe
-  MAKE_VERSION: 4.4.1
+permissions:
+  contents: write
 
 jobs:
   build:
     runs-on: windows-latest
+
     steps:
-      - name: Checkout source
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install gh cli
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.23'
-      - name: Download w64devkit v2.6.0
+      # 下载 w64devkit 自解压包（已确认资产名含 .7z）
+      - name: Download w64devkit
+        shell: pwsh
         run: |
           gh release download $env:W64DEVKIT_TAG `
             --repo skeeto/w64devkit `
             --pattern $env:W64DEVKIT_ASSET `
             -O w64devkit-sfx.exe
         env:
+          W64DEVKIT_TAG: v2.6.0
+          W64DEVKIT_ASSET: w64devkit-x64-2.6.0.7z.exe
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # 解压自解压 7z 包，把 bin 加入 PATH
       - name: Extract w64devkit
+        shell: pwsh
         run: |
-          .\w64devkit-sfx.exe -o".\w64devkit" -y
-          echo "$PWD\w64devkit\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+          $out = "${{ github.workspace }}\w64devkit"
+          try {
+            # 7z 自解压风格参数：-y 全部确认，-o 输出目录（-o 后无空格）
+            Start-Process -FilePath .\w64devkit-sfx.exe -ArgumentList "-y", "-o$out" -Wait -ErrorAction Stop
+          } catch {
+            Write-Host "Self-extract failed, fallback to 7z"
+            7z x .\w64devkit-sfx.exe -o"$out" -y
+          }
+          if (-not (Test-Path "$out\bin")) { throw "w64devkit\bin not found after extraction" }
+          echo "$out\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
-      - name: Build GNU Make
+      # 你的编译命令
+      - name: Build gnumake
         shell: cmd
         run: |
-          call build_w32.bat --without-guile gcc
+          .\build_w32.bat --without-guile gcc
           strip -s GccRel\gnumake.exe
 
-      - name: Smoke test
-        run: |
-          .\GccRel\gnumake.exe --version
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      # 发布到 Release
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        if: github.ref_type == 'tag'
         with:
-          name: gnumake-${{ env.MAKE_VERSION }}-x64
-          path: GccRel/gnumake.exe
-
-      - name: Create & upload Release
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: |
-          $tag = $env:GITHUB_REF -replace 'refs/tags/',''
-          gh release create $tag `
-            --title "GNU Make $env:MAKE_VERSION (w64devkit v2.6.0)" `
-            --notes "Automatically built on GitHub Actions" `
-            --clobber `
-            GccRel\gnumake.exe
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          files: GccRel/gnumake.exe
+          generate_release_notes: true
