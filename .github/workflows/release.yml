@@ -54,7 +54,7 @@ jobs:
         shell: cmd
         run: |
           .\build_w32.bat --without-guile gcc
-          strip -s GccRel\gnumake.exe
+          strip -s GccRel\gnumake.exe && echo STRIP_OK
 
       # ·¢²¼µ½ Release
       - name: Release
