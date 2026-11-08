@@ -1374,10 +1374,9 @@ remove_comments (char *line)
             //char b = 0;
             *comment = '\0';  /* Cut off the line at the #.  */
 
-            while (comment != line)
+            while (comment > line)
             {
-                if (--comment == line)
-                    break;
+                --comment;
 
                 if (*comment == ' ' || *comment == '\t')  // Remove ' ' and '\t' before comment.
                 {
