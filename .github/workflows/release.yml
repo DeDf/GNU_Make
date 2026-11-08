@@ -1,42 +1,64 @@
-name: Build and Release GNU Make
-
+name: Build GNU Make with w64devkit v2.6.0
 on:
   push:
     tags:
-      - 'v*'   # 推送 v 开头的标签时触发，比如 v4.4.1
+      - 'v*'
+  workflow_dispatch:
 
-permissions:
-  contents: write   # 允许创建 Release 和上传资产
+env:
+  W64DEVKIT_TAG: v2.6.0
+  W64DEVKIT_ASSET: w64devkit-x64-2.6.0.exe
+  MAKE_VERSION: 4.4.1
 
 jobs:
   build:
     runs-on: windows-latest
-
     steps:
-      - name: Checkout
+      - name: Checkout source
         uses: actions/checkout@v4
 
-      # 下载 w64devkit 并解压，然后把 bin 目录加入 PATH
-      - name: Setup w64devkit
-        shell: pwsh
+      - name: Install gh cli
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+      - name: Download w64devkit v2.6.0
         run: |
-          $version = "2.6.0"
-          $url = "https://github.com/skeeto/w64devkit/releases/download/v$version/w64devkit-$version.zip"
-          Invoke-WebRequest -Uri $url -OutFile w64devkit.zip
-          Expand-Archive -Path w64devkit.zip -DestinationPath .
-          echo "${{ github.workspace }}\w64devkit\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          gh release download $env:W64DEVKIT_TAG `
+            --repo skeeto/w64devkit `
+            --pattern $env:W64DEVKIT_ASSET `
+            -O w64devkit-sfx.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 你的编译命令，现在 gcc 已在 PATH 中
-      - name: Build gnumake
+      - name: Extract w64devkit
+        run: |
+          .\w64devkit-sfx.exe -o".\w64devkit" -y
+          echo "$PWD\w64devkit\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: Build GNU Make
         shell: cmd
         run: |
-          .\build_w32.bat --without-guile gcc
+          call build_w32.bat --without-guile gcc
           strip -s GccRel\gnumake.exe
 
-      # 发布到 Release
-      - name: Release
-        uses: softprops/action-gh-release@v2
-        if: github.ref_type == 'tag'
+      - name: Smoke test
+        run: |
+          .\GccRel\gnumake.exe --version
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
-          files: GccRel/gnumake.exe
-          generate_release_notes: true
+          name: gnumake-${{ env.MAKE_VERSION }}-x64
+          path: GccRel/gnumake.exe
+
+      - name: Create & upload Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          $tag = $env:GITHUB_REF -replace 'refs/tags/',''
+          gh release create $tag `
+            --title "GNU Make $env:MAKE_VERSION (w64devkit v2.6.0)" `
+            --notes "Automatically built on GitHub Actions" `
+            --clobber `
+            GccRel\gnumake.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
