@@ -16,7 +16,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 下载 w64devkit 自解压包（已确认资产名含 .7z）
+      # 下载 w64devkit 自解压包
       - name: Download w64devkit
         shell: pwsh
         run: |
@@ -30,21 +30,26 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # 解压自解压 7z 包，把 bin 加入 PATH
+      # 解压后结构为：<解压根目录>\w64devkit\bin
       - name: Extract w64devkit
         shell: pwsh
         run: |
-          $out = "${{ github.workspace }}\w64devkit"
+          $out = "${{ github.workspace }}\w64devkit-extract"
           try {
-            # 7z 自解压风格参数：-y 全部确认，-o 输出目录（-o 后无空格）
             Start-Process -FilePath .\w64devkit-sfx.exe -ArgumentList "-y", "-o$out" -Wait -ErrorAction Stop
           } catch {
             Write-Host "Self-extract failed, fallback to 7z"
             7z x .\w64devkit-sfx.exe -o"$out" -y
           }
-          if (-not (Test-Path "$out\bin")) { throw "w64devkit\bin not found after extraction" }
-          echo "$out\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          $bin = Join-Path $out "w64devkit\bin"
+          if (-not (Test-Path $bin)) {
+            Write-Host "Actual structure under ${out}:"
+            Get-ChildItem -Recurse -Depth 2 $out | Select-Object FullName
+            throw "w64devkit\bin not found under $out"
+          }
+          echo $bin | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
-      # 你的编译命令
+      # 编译 gnumake
       - name: Build gnumake
         shell: cmd
         run: |
